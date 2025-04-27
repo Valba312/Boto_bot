@@ -59,3 +59,28 @@ def get_all_tasks(chat_id):
     cursor.close()
     conn.close()
     return tasks
+
+def get_tasks_by_status(chat_id, status):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT message_id FROM tasks 
+    WHERE chat_id = ? AND status = ?
+    ''', (chat_id, status))
+    tasks = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return [row[0] for row in tasks]
+
+def get_task_by_message_id(chat_id, message_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT message_id, text, status 
+    FROM tasks 
+    WHERE chat_id = ? AND message_id = ?
+    ''', (chat_id, message_id))
+    task = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return task
