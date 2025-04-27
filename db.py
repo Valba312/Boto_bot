@@ -46,3 +46,16 @@ def update_task_status(chat_id, message_id, status):
     conn.commit()
     cursor.close()
     conn.close()
+
+def get_all_tasks(chat_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    SELECT message_id, text, status 
+    FROM tasks 
+    WHERE chat_id = ?
+    ''', (chat_id,))
+    tasks = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return tasks
