@@ -1,0 +1,48 @@
+import sqlite3
+
+# Подключение к базе
+def get_connection():
+    return sqlite3.connect('tasks.db')
+
+# Создание таблицы задач
+def create_tasks_table():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id INTEGER NOT NULL,
+        message_id INTEGER NOT NULL,
+        author TEXT NOT NULL,
+        text TEXT NOT NULL,
+        status TEXT NOT NULL
+    )
+    ''')
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+# Добавление новой задачи
+def add_task(chat_id, message_id, author, text, status):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    INSERT INTO tasks (chat_id, message_id, author, text, status)
+    VALUES (?, ?, ?, ?, ?)
+    ''', (chat_id, message_id, author, text, status))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+# Обновление статуса задачи
+def update_task_status(chat_id, message_id, status):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+    UPDATE tasks
+    SET status = ?
+    WHERE chat_id = ? AND message_id = ?
+    ''', (status, chat_id, message_id))
+    conn.commit()
+    cursor.close()
+    conn.close()
