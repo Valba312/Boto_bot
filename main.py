@@ -48,31 +48,41 @@ def cmd_newtask(m):
     content_types=['text']
 )
 def handle_newtask_text(m):
-    text   = m.text
-    author = m.from_user.first_name or 'Пользователь'
-    cid    = m.chat.id
+    cid  = m.chat.id
+    user = m.from_user
+    text = m.text
 
+    # Собираем упоминание автора задачи
+    if user.username:
+        author = f"@{user.username}"
+    else:
+        author = user.first_name or str(user.id)
+
+    # Сохраняем задачу
     msg = bot.send_message(
         cid,
         f"*Задача:*\n{text}\n*Поставил:* {author}\n*Статус:* ❗ Не выполнено",
         reply_markup=action_kb()
     )
-    db.add_task(cid, msg.message_id, author, text, 'не выполнено')
+    db.add_task(cid, msg.message_id, author, text, 'не выполнено', accepted_by=None)
     user_states.pop(m.from_user.id, None)
 
 @bot.message_handler(commands=['task'])
 def cmd_task(m):
-    cid = m.chat.id
+    cid  = m.chat.id
     mids = db.get_all_tasks(cid)
     if not mids:
         bot.send_message(cid, "Нет задач в этом чате.")
         return
 
     for mid in mids:
-        txt, status = db.get_task_by_id(cid, mid)
+        author, text, status, accepted_by = db.get_task_by_id(cid, mid)
+        txt = f"{text}\n\nПоставил: {author}\nСтатус: {status}"
+        if accepted_by:
+            txt += f"\nПринял: {accepted_by}"
         bot.send_message(
             cid,
-            f"{txt}\n\nСтатус: {status}",
+            txt,
             reply_to_message_id=mid,
             parse_mode='Markdown'
         )
@@ -89,18 +99,33 @@ def cmd_filter(m):
 # Обработчики inline-кнопок
 # ——————————————————————————————————————————————————————————————
 
-# 1) Принять задачу
+# 1) Нажали «Принято»
 @bot.callback_query_handler(func=lambda cb: cb.data == 'accepted')
 def handle_accepted(cb):
     cid = cb.message.chat.id
     mid = cb.message.message_id
+    user = cb.from_user
 
-    new = cb.message.text.replace('❗ Не выполнено', '✅ Принято')
+    # Собираем упоминание того, кто принял
+    if user.username:
+        taker = f"@{user.username}"
+    else:
+        taker = user.first_name or str(user.id)
+
+    # Берём из БД текст и автора
+    author, text, _, _ = db.get_task_by_id(cid, mid)
+
+    new = (
+        f"*Задача:*\n{text}\n"
+        f"*Поставил:* {author}\n"
+        f"*Принял:* {taker}\n"
+        f"*Статус:* ✅ Принято"
+    )
     bot.edit_message_text(new, cid, mid, parse_mode='Markdown')
-    db.update_task_status(cid, mid, 'принято')
+    db.update_task_status(cid, mid, 'принято', accepted_by=taker)
     bot.answer_callback_query(cb.id)
 
-# 2) Фильтрация по статусу
+# 2) Фильтрация по статусу + кнопка «Прислать все»
 @bot.callback_query_handler(func=lambda cb: cb.data in ('status_ne','status_accepted'))
 def handle_status_filter(cb):
     cid  = cb.message.chat.id
@@ -113,15 +138,13 @@ def handle_status_filter(cb):
             f"❌ Нет задач со статусом «{st}».",
             cid,
             cb.message.message_id,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("◀ Назад", callback_data="back_filter")
-            ]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀ Назад", callback_data="back_filter")]])
         )
     else:
         kb = InlineKeyboardMarkup()
         for mid in mids:
-            txt, _ = db.get_task_by_id(cid, mid)
-            label = txt if len(txt) < 25 else txt[:25] + '…'
+            author, text, status, accepted_by = db.get_task_by_id(cid, mid)
+            label = text if len(text) < 25 else text[:25] + '…'
             kb.add(InlineKeyboardButton(label, callback_data=f"task_{mid}_{data}"))
         kb.add(InlineKeyboardButton("📨 Прислать все", callback_data=f"send_all_{data}"))
         kb.add(InlineKeyboardButton("◀ Назад",         callback_data="back_filter"))
@@ -137,10 +160,10 @@ def handle_status_filter(cb):
 # 3) Прислать все задачи выбранного статуса
 @bot.callback_query_handler(func=lambda cb: cb.data.startswith('send_all_'))
 def handle_send_all(cb):
-    cid       = cb.message.chat.id
-    status_cd = cb.data[len('send_all_'):]
-    st        = {'status_ne':'не выполнено','status_accepted':'принято'}[status_cd]
-    mids      = db.get_tasks_by_status(cid, st)
+    cid        = cb.message.chat.id
+    status_cd  = cb.data[len('send_all_'):]
+    st         = {'status_ne':'не выполнено','status_accepted':'принято'}[status_cd]
+    mids       = db.get_tasks_by_status(cid, st)
 
     if not mids:
         bot.answer_callback_query(cb.id, text="Нет задач для отправки.")
@@ -148,15 +171,18 @@ def handle_send_all(cb):
 
     try:
         for mid in mids:
-            txt, _ = db.get_task_by_id(cid, mid)
+            author, text, status, accepted_by = db.get_task_by_id(cid, mid)
+            txt = f"{text}\n\nПоставил: {author}\nСтатус: {status}"
+            if accepted_by:
+                txt += f"\nПринял: {accepted_by}"
             bot.send_message(
                 cid,
-                f"{txt}\n\nСтатус: {st}",
+                txt,
                 reply_to_message_id=mid,
                 parse_mode='Markdown'
             )
     except ApiTelegramException as e:
-        if hasattr(e, 'result_json') and e.result_json.get('error_code') == 429:
+        if getattr(e, 'result_json', {}).get('error_code') == 429:
             retry = e.result_json.get('parameters', {}).get('retry_after', 'несколько')
             bot.answer_callback_query(cb.id, text=f"Слишком часто — подожди {retry} сек.")
             return
@@ -166,8 +192,8 @@ def handle_send_all(cb):
     # Убираем кнопку «Прислать все»
     kb = InlineKeyboardMarkup()
     for mid in mids:
-        txt, _ = db.get_task_by_id(cid, mid)
-        label = txt if len(txt) < 25 else txt[:25] + '…'
+        author, text, status, accepted_by = db.get_task_by_id(cid, mid)
+        label = text if len(text) < 25 else text[:25] + '…'
         kb.add(InlineKeyboardButton(label, callback_data=f"task_{mid}_{status_cd}"))
     kb.add(InlineKeyboardButton("◀ Назад", callback_data="back_filter"))
 
@@ -176,7 +202,6 @@ def handle_send_all(cb):
         message_id=cb.message.message_id,
         reply_markup=kb
     )
-
     bot.answer_callback_query(cb.id, text=f"Отправлено {len(mids)} задач.")
 
 # 4) Выбор конкретной задачи
@@ -187,23 +212,21 @@ def handle_task_select(cb):
     mid = int(mid_s)
     human = {'status_ne':'не выполнено','status_accepted':'принято'}[status_cd]
 
-    rec = db.get_task_by_id(cid, mid)
-    if rec:
-        txt, _ = rec
-        bot.send_message(
-            cid,
-            f"🔍 Задача:\n\n{txt}\n\nСтатус: {human}",
-            reply_to_message_id=mid,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("◀ Назад", callback_data="back_filter")
-            ]]),
-            parse_mode='Markdown'
-        )
-    else:
-        bot.send_message(cid, "❌ Задача не найдена.")
+    author, text, status, accepted_by = db.get_task_by_id(cid, mid)
+    txt = f"{text}\n\nПоставил: {author}\nСтатус: {status}"
+    if accepted_by:
+        txt += f"\nПринял: {accepted_by}"
+
+    bot.send_message(
+        cid,
+        f"🔍 Задача:\n\n{txt}",
+        reply_to_message_id=mid,
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("◀ Назад", callback_data="back_filter")]]),
+        parse_mode='Markdown'
+    )
     bot.answer_callback_query(cb.id)
 
-# 5) Назад в меню фильтра
+# 5) «Назад» в меню фильтра
 @bot.callback_query_handler(func=lambda cb: cb.data == 'back_filter')
 def handle_back_filter(cb):
     bot.edit_message_text(
