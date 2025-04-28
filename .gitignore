@@ -1,0 +1,3 @@
+*.db
+tasks.db-wal
+tasks.db-shm

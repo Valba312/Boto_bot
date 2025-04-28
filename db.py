@@ -1,86 +1,57 @@
 import sqlite3
 
-# Подключение к базе
-def get_connection():
-    return sqlite3.connect('tasks.db')
+DB = sqlite3.connect('tasks.db', check_same_thread=False)
+DB.execute('PRAGMA journal_mode=WAL;')
 
-# Создание таблицы задач
-def create_tasks_table():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id INTEGER NOT NULL,
-        message_id INTEGER NOT NULL,
-        author TEXT NOT NULL,
-        text TEXT NOT NULL,
-        status TEXT NOT NULL
-    )
+def create_tables():
+    c = DB.cursor()
+    c.execute('''
+      CREATE TABLE IF NOT EXISTS tasks (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id           INTEGER NOT NULL,
+        thread_id         INTEGER,
+        message_id        INTEGER NOT NULL,
+        author            TEXT    NOT NULL,
+        text              TEXT    NOT NULL,
+        status            TEXT    NOT NULL
+      )
     ''')
-    conn.commit()
-    cursor.close()
-    conn.close()
+    c.execute('CREATE INDEX IF NOT EXISTS idx_thread_status ON tasks(thread_id, status)')
+    DB.commit()
 
-# Добавление новой задачи
-def add_task(chat_id, message_id, author, text, status):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    INSERT INTO tasks (chat_id, message_id, author, text, status)
-    VALUES (?, ?, ?, ?, ?)
-    ''', (chat_id, message_id, author, text, status))
-    conn.commit()
-    cursor.close()
-    conn.close()
+def add_task(chat_id, thread_id, message_id, author, text, status):
+    DB.execute(
+      'INSERT INTO tasks(chat_id,thread_id,message_id,author,text,status) VALUES(?,?,?,?,?,?)',
+      (chat_id, thread_id, message_id, author, text, status)
+    )
+    DB.commit()
 
-# Обновление статуса задачи
 def update_task_status(chat_id, message_id, status):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    UPDATE tasks
-    SET status = ?
-    WHERE chat_id = ? AND message_id = ?
-    ''', (status, chat_id, message_id))
-    conn.commit()
-    cursor.close()
-    conn.close()
+    DB.execute(
+      'UPDATE tasks SET status = ? WHERE chat_id = ? AND message_id = ?',
+      (status, chat_id, message_id)
+    )
+    DB.commit()
 
-def get_all_tasks(chat_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    SELECT message_id, text, status 
-    FROM tasks 
-    WHERE chat_id = ?
-    ''', (chat_id,))
-    tasks = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return tasks
+def get_all_tasks(chat_id, thread_id):
+    cur = DB.cursor()
+    if thread_id is None:
+        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id IS NULL', (chat_id,))
+    else:
+        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id=?', (chat_id, thread_id))
+    return [r[0] for r in cur.fetchall()]
 
-def get_tasks_by_status(chat_id, status):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    SELECT message_id FROM tasks 
-    WHERE chat_id = ? AND status = ?
-    ''', (chat_id, status))
-    tasks = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return [row[0] for row in tasks]
+def get_tasks_by_status(chat_id, thread_id, status):
+    cur = DB.cursor()
+    if thread_id is None:
+        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id IS NULL AND status=?',
+                    (chat_id, status))
+    else:
+        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id=? AND status=?',
+                    (chat_id, thread_id, status))
+    return [r[0] for r in cur.fetchall()]
 
-def get_task_by_message_id(chat_id, message_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-    SELECT message_id, text, status 
-    FROM tasks 
-    WHERE chat_id = ? AND message_id = ?
-    ''', (chat_id, message_id))
-    task = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return task
+def get_task_by_id(chat_id, message_id):
+    cur = DB.cursor()
+    cur.execute('SELECT text,status FROM tasks WHERE chat_id=? AND message_id=?', (chat_id, message_id))
+    return cur.fetchone()
