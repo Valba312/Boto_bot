@@ -48,18 +48,25 @@ def update_task_status(chat_id, message_id, status):
     cursor.close()
     conn.close()
 
-def get_all_tasks(chat_id):
+def get_all_tasks(chat_id, thread_id):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-    SELECT message_id, text, status 
-    FROM tasks 
-    WHERE chat_id = ?
-    ''', (chat_id,))
+    if thread_id is None:
+        cursor.execute('''
+            SELECT message_id, text, status
+            FROM tasks 
+            WHERE chat_id = ? AND message_thread_id IS NULL
+            ''', (chat_id,))
+    else:
+        cursor.execute('''
+            SELECT message_id, text, status
+            FROM tasks 
+            WHERE chat_id = ? AND message_thread_id = ?
+            ''', (chat_id, thread_id))
     tasks = cursor.fetchall()
     cursor.close()
     conn.close()
-    return tasks
+    return [r[0] for r in tasks]
 
 def get_tasks_by_status(chat_id, thread_id, status):
     conn = get_connection()
