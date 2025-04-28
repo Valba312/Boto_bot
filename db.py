@@ -1,71 +1,67 @@
 import sqlite3
 
-# Открываем базу в режиме WAL для безопасной параллельной работы
+# Открываем (или создаём) файл БД в режиме WAL
 DB = sqlite3.connect('tasks.db', check_same_thread=False)
 DB.execute('PRAGMA journal_mode=WAL;')
 
 def create_tables():
-    """Создать таблицу задач и индекс, если ещё не созданы."""
+    """Создаёт таблицу tasks с полем accepted_by."""
     c = DB.cursor()
     c.execute('''
       CREATE TABLE IF NOT EXISTS tasks (
-        id                INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id           INTEGER NOT NULL,
-        thread_id         INTEGER,
-        message_id        INTEGER NOT NULL,
-        author            TEXT    NOT NULL,
-        text              TEXT    NOT NULL,
-        status            TEXT    NOT NULL
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id      INTEGER NOT NULL,
+        message_id   INTEGER NOT NULL,
+        author       TEXT    NOT NULL,
+        text         TEXT    NOT NULL,
+        status       TEXT    NOT NULL,
+        accepted_by  TEXT
       )
     ''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_thread_status ON tasks(thread_id, status)')
     DB.commit()
 
-def add_task(chat_id, thread_id, message_id, author, text, status):
-    """Добавить новую задачу в базу."""
+def add_task(chat_id, message_id, author, text, status, accepted_by=None):
+    """Добавляет новую задачу."""
     DB.execute(
-      'INSERT INTO tasks(chat_id,thread_id,message_id,author,text,status) VALUES(?,?,?,?,?,?)',
-      (chat_id, thread_id, message_id, author, text, status)
+      'INSERT INTO tasks(chat_id,message_id,author,text,status,accepted_by) VALUES(?,?,?,?,?,?)',
+      (chat_id, message_id, author, text, status, accepted_by)
     )
     DB.commit()
 
-def update_task_status(chat_id, message_id, status):
-    """Обновить статус существующей задачи."""
-    DB.execute(
-      'UPDATE tasks SET status = ? WHERE chat_id = ? AND message_id = ?',
-      (status, chat_id, message_id)
-    )
-    DB.commit()
-
-def get_all_tasks(chat_id, thread_id):
-    """Получить список message_id всех задач в данном чате/теме."""
-    cur = DB.cursor()
-    if thread_id is None:
-        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id IS NULL', (chat_id,))
+def update_task_status(chat_id, message_id, status, accepted_by=None):
+    """Обновляет статус и (если передано) имя принявшего."""
+    if accepted_by is None:
+        DB.execute(
+          'UPDATE tasks SET status=? WHERE chat_id=? AND message_id=?',
+          (status, chat_id, message_id)
+        )
     else:
-        cur.execute('SELECT message_id FROM tasks WHERE chat_id=? AND thread_id=?', (chat_id, thread_id))
+        DB.execute(
+          'UPDATE tasks SET status=?,accepted_by=? WHERE chat_id=? AND message_id=?',
+          (status, accepted_by, chat_id, message_id)
+        )
+    DB.commit()
+
+def get_all_tasks(chat_id):
+    cur = DB.cursor()
+    cur.execute('SELECT message_id FROM tasks WHERE chat_id=?', (chat_id,))
     return [r[0] for r in cur.fetchall()]
 
-def get_tasks_by_status(chat_id, thread_id, status):
-    """Получить список message_id задач по статусу."""
+def get_tasks_by_status(chat_id, status):
     cur = DB.cursor()
-    if thread_id is None:
-        cur.execute(
-            'SELECT message_id FROM tasks WHERE chat_id=? AND thread_id IS NULL AND status=?',
-            (chat_id, status)
-        )
-    else:
-        cur.execute(
-            'SELECT message_id FROM tasks WHERE chat_id=? AND thread_id=? AND status=?',
-            (chat_id, thread_id, status)
-        )
+    cur.execute(
+      'SELECT message_id FROM tasks WHERE chat_id=? AND status=?',
+      (chat_id, status)
+    )
     return [r[0] for r in cur.fetchall()]
 
 def get_task_by_id(chat_id, message_id):
-    """Получить текст и статус конкретной задачи по message_id."""
+    """
+    Возвращает кортеж (author, text, status, accepted_by).
+    """
     cur = DB.cursor()
     cur.execute(
-      'SELECT text, status FROM tasks WHERE chat_id=? AND message_id=?',
+      'SELECT author, text, status, accepted_by FROM tasks WHERE chat_id=? AND message_id=?',
       (chat_id, message_id)
     )
     return cur.fetchone()
