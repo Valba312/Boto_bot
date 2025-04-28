@@ -1,8 +1,12 @@
 import sqlite3
 
-# Подключение к базе
+# Единое глобальное соединение
+_conn = sqlite3.connect('tasks.db', check_same_thread=False)
+# Режим Write-Ahead Logging для более быстрой параллельной работы
+_conn.execute('PRAGMA journal_mode=WAL;')
+
 def get_connection():
-    return sqlite3.connect('tasks.db')
+    return _conn
 
 # Создание таблицы задач
 def create_tasks_table():
@@ -19,9 +23,13 @@ def create_tasks_table():
         status TEXT NOT NULL
     )
     ''')
+    cursor.execute('''
+    CREATE INDEX IF NOT EXISTS idx_thread_status
+      ON tasks(message_thread_id, status)
+    ''')
+    
     conn.commit()
     cursor.close()
-    conn.close()
 
 # Добавление новой задачи
 def add_task(chat_id, thread_id, message_id, author, text, status):
@@ -33,7 +41,6 @@ def add_task(chat_id, thread_id, message_id, author, text, status):
     ''', (chat_id, thread_id, message_id, author, text, status))
     conn.commit()
     cursor.close()
-    conn.close()
 
 # Обновление статуса задачи
 def update_task_status(chat_id, message_id, status):
@@ -46,7 +53,6 @@ def update_task_status(chat_id, message_id, status):
     ''', (status, chat_id, message_id))
     conn.commit()
     cursor.close()
-    conn.close()
 
 def get_all_tasks(chat_id, thread_id):
     conn = get_connection()
@@ -65,7 +71,6 @@ def get_all_tasks(chat_id, thread_id):
             ''', (chat_id, thread_id))
     tasks = cursor.fetchall()
     cursor.close()
-    conn.close()
     return [r[0] for r in tasks]
 
 def get_tasks_by_status(chat_id, thread_id, status):
@@ -83,7 +88,6 @@ def get_tasks_by_status(chat_id, thread_id, status):
             ''', (chat_id, thread_id, status))
     tasks = cursor.fetchall()
     cursor.close()
-    conn.close()
     return [row[0] for row in tasks]
 
 def get_task_by_message_id(chat_id, message_id):
@@ -96,5 +100,4 @@ def get_task_by_message_id(chat_id, message_id):
     ''', (chat_id, message_id))
     task = cursor.fetchone()
     cursor.close()
-    conn.close()
     return task
