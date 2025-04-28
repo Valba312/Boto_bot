@@ -57,7 +57,7 @@ while True:
                         send_resp = requests.post(f'{URL}/sendMessage', json=payload)
 
                         message_id = send_resp.json()['result']['message_id']
-                        add_task(chat_id, message_id, task['author'], task['text'], 'не выполнено')
+                        add_task(chat_id, thread_id, message_id, task['author'], task['text'], 'не выполнено')
 
                         user_states.pop(user_id)
                         user_task_data.pop(user_id)
@@ -74,31 +74,28 @@ while True:
                     requests.post(f'{URL}/sendMessage', json=payload)
 
                 elif text == '/task':
-                    tasks = get_all_tasks(chat_id)
-                    if not tasks:
+                    thread_id = message.get('message_thread_id')
+                    task_ids = get_all_tasks(chat_id, thread_id)
+                    if not task_ids:
                         payload = {
                             'chat_id': chat_id,
-                            'text': 'Нет задач для отображения.'
+                            'text': 'Нет задач для отображения в этой теме.'
                         }
+
                         if thread_id is not None:
                             payload['message_thread_id'] = thread_id
                         requests.post(f'{URL}/sendMessage', json=payload)
-
                     else:
-                        for task in tasks:
-                            message_id, task_text, status = task
-                            payload = {
+                        for msg_id in task_ids:
+                            fwd_payload = {
                                 'chat_id': chat_id,
-                                'text': f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
-                                        f"{task_text}\nСтатус: {status}\n"
-                                        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
-                                'parse_mode': 'Markdown',
-                                'reply_markup': {
-                                    'inline_keyboard': [
-                                        [{'text': 'Ответить', 'callback_data': f'reply_{message_id}'}]
-                                    ]
-                                }
+                                'from_chat_id': chat_id,
+                                'message_id': msg_id
                             }
+                            if thread_id is not None:
+                                fwd_payload['message_thread_id'] = thread_id
+
+                            requests.post(f'{URL}/forwardMessage', json=fwd_payload)
 
                 elif text == '/filter':
                     payload = {
@@ -119,12 +116,13 @@ while True:
             elif callback: # Одиночный блок обработки callback
                 chat_id = callback['message']['chat']['id']
                 callback_message_id = callback['message']['message_id']  # ID сообщения с кнопкой
+                thread_id = callback['message'].get('message_thread_id')
                 data_callback = callback['data']
 
                 # Обработка фильтрации по статусу
                 if data_callback.startswith('status_'):
                     status = data_callback.split('_')[1]
-                    tasks = get_tasks_by_status(chat_id, status)
+                    tasks = get_tasks_by_status(chat_id, thread_id, status)
 
                     if tasks:
                         task_buttons = []
