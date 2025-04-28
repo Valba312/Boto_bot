@@ -12,6 +12,7 @@ def create_tasks_table():
     CREATE TABLE IF NOT EXISTS tasks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER NOT NULL,
+        message_thread_id INTEGER,
         message_id INTEGER NOT NULL,
         author TEXT NOT NULL,
         text TEXT NOT NULL,
@@ -23,13 +24,13 @@ def create_tasks_table():
     conn.close()
 
 # Добавление новой задачи
-def add_task(chat_id, message_id, author, text, status):
+def add_task(chat_id, thread_id, message_id, author, text, status):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('''
-    INSERT INTO tasks (chat_id, message_id, author, text, status)
-    VALUES (?, ?, ?, ?, ?)
-    ''', (chat_id, message_id, author, text, status))
+    INSERT INTO tasks (chat_id, message_thread_id, message_id, author, text, status)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ''', (chat_id, thread_id, message_id, author, text, status))
     conn.commit()
     cursor.close()
     conn.close()
@@ -60,13 +61,19 @@ def get_all_tasks(chat_id):
     conn.close()
     return tasks
 
-def get_tasks_by_status(chat_id, status):
+def get_tasks_by_status(chat_id, thread_id, status):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-    SELECT message_id FROM tasks 
-    WHERE chat_id = ? AND status = ?
-    ''', (chat_id, status))
+    if thread_id is None:
+        cursor.execute('''
+            SELECT message_id FROM tasks 
+            WHERE chat_id = ? AND message_thread_id is NULL AND status = ?
+            ''', (chat_id, status))
+    else:
+        cursor.execute('''
+            SELECT message_id FROM tasks 
+            WHERE chat_id = ? AND message_thread_id = ? AND status = ?
+            ''', (chat_id, thread_id, status))
     tasks = cursor.fetchall()
     cursor.close()
     conn.close()
