@@ -26,6 +26,7 @@ while True:
 
             if message:
                 chat_id = message['chat']['id']
+                thread_id = message.get('message_thread_id')
                 user_id = message['from']['id']
                 user_name = message['from'].get('first_name', 'Пользователь')
                 text = message.get('text', '')
@@ -37,21 +38,24 @@ while True:
                         user_task_data[user_id] = {'text': text, 'author': user_name}
                         task = user_task_data[user_id]
 
-                        # Отправка сообщения с задачей
-                        task_text = f"**Задача:**\n{task['text']}\n**Поставил:** {task['author']}\n**Статус:** ❗️Не выполнено"
-                        send_resp = requests.post(f'{URL}/sendMessage', json={
+                        payload = {
                             'chat_id': chat_id,
-                            'text': task_text,
+                            'text': f"**Задача:**\n{task['text']}\n"
+                                    f"**Поставил:** {task['author']}\n"
+                                    f"**Статус:** ❗️Не выполнено",
                             'parse_mode': 'Markdown',
                             'reply_markup': {
                                 'inline_keyboard': [
                                     [{'text': 'Взять в работу', 'callback_data': 'in_progress'}],
-                                    [{'text': 'Выполнено', 'callback_data': 'completed'}]
+                                    [{'text': 'Выполнено',       'callback_data': 'completed'}]
                                 ]
                             }
-                        })
+                        }
+                        if thread_id is not None:
+                            payload['message_thread_id'] = thread_id
 
-                        # Сохранение задачи в базу данных
+                        send_resp = requests.post(f'{URL}/sendMessage', json=payload)
+
                         message_id = send_resp.json()['result']['message_id']
                         add_task(chat_id, message_id, task['author'], task['text'], 'не выполнено')
 
@@ -60,49 +64,57 @@ while True:
 
                 elif text == '/newtask':
                     user_states[user_id] = 'waiting_for_text'
-                    requests.post(f'{URL}/sendMessage', json={
+                    payload = {
                         'chat_id': chat_id,
                         'text': 'Введите текст задачи:'
-                    })
+                    }
+
+                    if thread_id is not None:
+                        payload['message_thread_id'] = thread_id
+                    requests.post(f'{URL}/sendMessage', json=payload)
 
                 elif text == '/task':
                     tasks = get_all_tasks(chat_id)
                     if not tasks:
-                        requests.post(f'{URL}/sendMessage', json={
+                        payload = {
                             'chat_id': chat_id,
                             'text': 'Нет задач для отображения.'
-                        })
+                        }
+                        if thread_id is not None:
+                            payload['message_thread_id'] = thread_id
+                        requests.post(f'{URL}/sendMessage', json=payload)
+
                     else:
                         for task in tasks:
                             message_id, task_text, status = task
-                            # Сохраняем message_id задачи в callback_data
-                            requests.post(f'{URL}/sendMessage', json={
+                            payload = {
                                 'chat_id': chat_id,
-                                'text': f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n{task_text}\nСтатус: {status}\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
+                                'text': f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
+                                        f"{task_text}\nСтатус: {status}\n"
+                                        f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯",
                                 'parse_mode': 'Markdown',
                                 'reply_markup': {
                                     'inline_keyboard': [
-                                        [{
-                                            'text': 'Ответить',
-                                            'callback_data': f'reply_{message_id}'
-                                        }]
+                                        [{'text': 'Ответить', 'callback_data': f'reply_{message_id}'}]
                                     ]
                                 }
-                            })
+                            }
 
-                # В обработчике команды /filter
                 elif text == '/filter':
-                    requests.post(f'{URL}/sendMessage', json={
+                    payload = {
                         'chat_id': chat_id,
                         'text': 'Выберите статус задач:',
                         'reply_markup': {
                             'inline_keyboard': [
-                                [{'text': 'Не выполнено', 'callback_data': 'status_не выполнено'}],
-                                [{'text': 'Взято в работу', 'callback_data': 'status_взято в работу'}],
-                                [{'text': 'Выполнено', 'callback_data': 'status_выполнено'}]
+                                [{'text': 'Не выполнено',    'callback_data': 'status_не выполнено'}],
+                                [{'text': 'Взято в работу',  'callback_data': 'status_взято в работу'}],
+                                [{'text': 'Выполнено',       'callback_data': 'status_выполнено'}]
                             ]
                         }
-                    })
+                    }
+                    if thread_id is not None:
+                        payload['message_thread_id'] = thread_id
+                    requests.post(f'{URL}/sendMessage', json=payload)
 
             elif callback: # Одиночный блок обработки callback
                 chat_id = callback['message']['chat']['id']
