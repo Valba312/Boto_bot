@@ -6,6 +6,30 @@ from db import create_tasks_table, add_task, update_task_status, get_all_tasks, 
 TOKEN = '7752152586:AAHhH9iNwhEgdwlCn9jwFrUeJZ0eszuSOIo'
 URL = f'https://api.telegram.org/bot{TOKEN}'
 
+# Клавиатура для статусов
+STATUS_KB = {
+    'inline_keyboard': [
+        [{'text': 'Не выполнено',        'callback_data': 'status_не выполнено'}],
+        [{'text': 'Взято в работу',      'callback_data': 'status_взято в работу'}],
+        [{'text': 'Выполнено',           'callback_data': 'status_выполнено'}],
+    ]
+}
+
+# Клавиатура для задач «взять/завершить»
+TASK_ACTION_KB = {
+    'inline_keyboard': [
+        [{'text': 'Взять в работу',      'callback_data': 'in_progress'}],
+        [{'text': 'Выполнено',           'callback_data': 'completed'}],
+    ]
+}
+
+# Кнопка “Назад” к списку статусов
+BACK_TO_STATUS_KB = {
+    'inline_keyboard': [
+        [{'text': '◀️ Назад', 'callback_data': 'back_to_status'}]
+    ]
+}
+
 offset = 0
 user_states = {}
 user_task_data = {}
@@ -40,19 +64,15 @@ while True:
 
                         payload = {
                             'chat_id': chat_id,
-                            'text': f"**Задача:**\n{task['text']}\n"
+                            'text': (f"**Задача:**\n{task['text']}\n"
                                     f"**Поставил:** {task['author']}\n"
-                                    f"**Статус:** ❗️Не выполнено",
+                                    f"**Статус:** ❗️Не выполнено"),
                             'parse_mode': 'Markdown',
-                            'reply_markup': {
-                                'inline_keyboard': [
-                                    [{'text': 'Взять в работу', 'callback_data': 'in_progress'}],
-                                    [{'text': 'Выполнено',       'callback_data': 'completed'}]
-                                ]
-                            }
                         }
                         if thread_id is not None:
                             payload['message_thread_id'] = thread_id
+                        
+                        payload['reply_markup'] = TASK_ACTION_KB
 
                         send_resp = requests.post(f'{URL}/sendMessage', json=payload)
 
@@ -101,13 +121,7 @@ while True:
                     payload = {
                         'chat_id': chat_id,
                         'text': 'Выберите статус задач:',
-                        'reply_markup': {
-                            'inline_keyboard': [
-                                [{'text': 'Не выполнено',    'callback_data': 'status_не выполнено'}],
-                                [{'text': 'Взято в работу',  'callback_data': 'status_взято в работу'}],
-                                [{'text': 'Выполнено',       'callback_data': 'status_выполнено'}]
-                            ]
-                        }
+                        'reply_markup': STATUS_KB
                     }
                     if thread_id is not None:
                         payload['message_thread_id'] = thread_id
@@ -143,7 +157,7 @@ while True:
                             'reply_markup': {
                                 'inline_keyboard': [
                                     *task_buttons,
-                                    [{'text': '◀️ Назад', 'callback_data': 'back_to_status'}]
+                                    *BACK_TO_STATUS_KB['inline_keyboard']
                                 ]
                             }
                         })
@@ -152,11 +166,7 @@ while True:
                             'chat_id': chat_id,
                             'message_id': callback_message_id,
                             'text': f'❌ Задачи со статусом "{status}" не найдены',
-                            'reply_markup': {
-                                'inline_keyboard': [
-                                    [{'text': '◀️ Назад', 'callback_data': 'back_to_status'}]
-                                ]
-                            }
+                            'reply_markup': BACK_TO_STATUS_KB
                         })
 
                 # Обработка выбора задачи
