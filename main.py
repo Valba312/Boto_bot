@@ -7,7 +7,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlite3 import DatabaseError
 import db
 
-TOKEN = '8081090023:AAHizaGHTAshsYhPi7dOePK_slGyPnxQDxU'
+TOKEN = '7111863381:AAFVQ4V1hCmzDRIy-c8hxUeWrRbmZhPJB6A'
 bot = telebot.TeleBot(TOKEN, parse_mode='Markdown')
 
 # Логирование
@@ -83,7 +83,7 @@ def details_kb(status_key, tid):
 
 # ─── /newtask ─────────────────────────────────────────────────────────────────
 
-@bot.message_handler(commands=['newtask'])
+@bot.message_handler(commands=['t'])
 def cmd_newtask(m):
     cid  = m.chat.id
     tid  = m.message_thread_id
@@ -92,30 +92,52 @@ def cmd_newtask(m):
         return bot.reply_to(
             m,
             "❗ Неверный формат. Используйте:\n"
-            "<code>/newtask текст задачи</code>",
+            "<code>/t текст задачи</code>",
             parse_mode='HTML',
             message_thread_id=tid
         )
-    text = parts[1].strip()
+    task_text = parts[1].strip()
+
+    # 2) удаляем исходное сообщение пользователя
+    try:
+        bot.delete_message(cid, m.message_id)
+    except ApiTelegramException:
+        pass
 
     user = m.from_user
     author = f"@{user.username}" if user.username else user.first_name or str(user.id)
 
-    md = (
-        f"*Задача:*\n{text}\n"
-        f"*Поставил:* {author}\n"
-        f"*Статус:* ❗ Не выполнено"
+    # 4) формируем HTML-текст
+    html_text = (
+        f"<b>Задача:</b>\n"
+        f"{html.escape(task_text)}\n"
+        f"<b>Поставил:</b> {html.escape(author)}\n"
+        f"<b>Статус:</b> ❗ Не выполнено"
     )
     sent = bot.send_message(
-        cid, md,
-        parse_mode='Markdown',
+        cid, html_text,
+        parse_mode='HTML',
         message_thread_id=tid
     )
 
     mid = sent.message_id
-    kb = action_kb(tid, mid)  # твоя функция, строящая InlineKeyboard с кнопкой «Взять в работу»
-    bot.edit_message_reply_markup(cid, mid, reply_markup=kb)
-    db.add_task(cid, tid, mid, author, text, 'не выполнено', None)
+    # 6) собираем кнопку с правильным mid
+    kb = InlineKeyboardMarkup()
+    kb.add(
+        InlineKeyboardButton(
+            "✅ Взять в работу",
+            callback_data=f"accept|{tid}|{mid}"
+        )
+    )
+
+    # 7) «приклеиваем» клавиатуру
+    try:
+        bot.edit_message_reply_markup(cid, mid, reply_markup=kb)
+    except ApiTelegramException:
+        pass
+
+    # 8) сохраняем в БД
+    db.add_task(cid, tid, mid, author, task_text, 'не выполнено', None)
 
 # ─── «Принято» ─────────────────────────────────────────────────────────────────
 
@@ -152,12 +174,9 @@ def cb_accept(cb):
 
     # Строим зачёркнутый HTML
     new_html = (
-        f"<s><b>Задача:</b>\n"
-        f"{text_esc}\n"
-        f"<b>Поставил:</b> {author_esc}\n"
-        f"<b>Статус:</b> ❗ Не выполнено</s>\n\n"
-        f"<b>Принял:</b> {taker_esc}\n"
-        f"<b>Статус:</b> ✅ Принято"
+    f"<s><b>Задача:</b> {text_esc}</s>\n\n"
+    f"<b>Принял:</b> {taker_esc}\n"
+    f"<b>Статус:</b> ✅ Принято"
     )
 
     # Кнопка «Принято»
@@ -170,7 +189,7 @@ def cb_accept(cb):
             chat_id=cid,
             message_id=mid,
             parse_mode='HTML',
-            reply_markup=kb
+            reply_markup=None
         )
     except ApiTelegramException:
         logger.exception("Не удалось обновить сообщение после принятия")
@@ -273,13 +292,14 @@ def cb_task(cb):
         logger.exception("Ошибка БД при чтении деталей задачи")
         return bot.send_message(cid, "❗ Не могу показать задачу.", message_thread_id=tid)
 
-    txt = (
-        f"*Задача:*\n{text}\n"
-        f"*Поставил:* {author}\n"
-        f"*Статус:* {human}"
-    )
+    # ────────── новый вид ──────────
+    # одна строка для задачи
+    txt = f"*Задача:* {text}\n"           # ← без «\n» после текста
+    txt += f"*Поставил:* {author}\n"
+    txt += f"*Статус:* {human}"
     if taker:
         txt += f"\n*Принял:* {taker}"
+    # ───────────────────────────────
 
     kb = details_kb(status_key, tid)
     try:
