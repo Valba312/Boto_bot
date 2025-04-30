@@ -83,7 +83,7 @@ def details_kb(status_key, tid):
 
 # ─── /newtask ─────────────────────────────────────────────────────────────────
 
-@bot.message_handler(commands=['newtask'])
+@bot.message_handler(commands=['t'])
 def cmd_newtask(m):
     cid  = m.chat.id
     tid  = m.message_thread_id
@@ -92,7 +92,7 @@ def cmd_newtask(m):
         return bot.reply_to(
             m,
             "❗ Неверный формат. Используйте:\n"
-            "<code>/newtask текст задачи</code>",
+            "<code>/t текст задачи</code>",
             parse_mode='HTML',
             message_thread_id=tid
         )
