@@ -7,7 +7,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from sqlite3 import DatabaseError
 import db
 
-TOKEN = '7111863381:AAFVQ4V1hCmzDRIy-c8hxUeWrRbmZhPJB6A'
+TOKEN = '7909570032:AAFppvVBCGt80n9urHgmD4u0qRAvlMKW8a8'
 bot = telebot.TeleBot(TOKEN, parse_mode='Markdown')
 
 # Логирование
@@ -81,13 +81,26 @@ def details_kb(status_key, tid):
     kb.add(InlineKeyboardButton("◀ К списку", callback_data=cb))
     return kb
 
-# ─── /newtask ─────────────────────────────────────────────────────────────────
+# ─── /t ─────────────────────────────────────────────────────────────────
 
 @bot.message_handler(commands=['t'])
 def cmd_newtask(m):
-    cid  = m.chat.id
-    tid  = m.message_thread_id
-    parts = m.text.split(maxsplit=1)
+    cid = m.chat.id
+    tid = m.message_thread_id
+
+    # 1) Чтение текста команды
+    try:
+        text = m.text
+    except AttributeError:
+        logger.exception("m.text is missing or invalid")
+        return bot.reply_to(
+            m,
+            "❗ Не удалось прочитать текст команды.",
+            message_thread_id=tid
+        )
+
+    # 2) Разбор формата
+    parts = text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
         return bot.reply_to(
             m,
@@ -98,46 +111,112 @@ def cmd_newtask(m):
         )
     task_text = parts[1].strip()
 
-    # 2) удаляем исходное сообщение пользователя
+    # 3) Удаление исходного сообщения
     try:
         bot.delete_message(cid, m.message_id)
     except ApiTelegramException:
-        pass
+        logger.warning("Не удалось удалить исходное сообщение", exc_info=True)
+    except Exception:
+        logger.exception("Unexpected error during delete_message")
 
-    user = m.from_user
-    author = f"@{user.username}" if user.username else user.first_name or str(user.id)
-
-    # 4) формируем HTML-текст
-    html_text = (
-        f"<b>Задача:</b>\n"
-        f"{html.escape(task_text)}\n"
-        f"<b>Поставил:</b> {html.escape(author)}\n"
-        f"<b>Статус:</b> ❗ Не выполнено"
-    )
-    sent = bot.send_message(
-        cid, html_text,
-        parse_mode='HTML',
-        message_thread_id=tid
-    )
-
-    mid = sent.message_id
-    # 6) собираем кнопку с правильным mid
-    kb = InlineKeyboardMarkup()
-    kb.add(
-        InlineKeyboardButton(
-            "✅ Взять в работу",
-            callback_data=f"accept|{tid}|{mid}"
-        )
-    )
-
-    # 7) «приклеиваем» клавиатуру
+    # 4) Формирование автора
     try:
+        user = m.from_user
+        author = f"@{user.username}" if user.username else user.first_name or str(user.id)
+    except AttributeError:
+        logger.warning("Missing m.from_user data", exc_info=True)
+        author = "<unknown>"
+
+    # 5) HTML-экранирование
+    try:
+        esc_text   = html.escape(task_text)
+        esc_author = html.escape(author)
+    except TypeError:
+        logger.exception("html.escape got non-string")
+        esc_text   = str(task_text)
+        esc_author = str(author)
+
+    # 6) Отправка сообщения с задачей
+    try:
+        html_text = (
+            f"<b>Задача:</b> {esc_text}\n"
+            f"<b>Поставил:</b> {esc_author}\n"
+            f"<b>Статус:</b> ❗ Не выполнено"
+        )
+        sent = bot.send_message(
+            cid,
+            html_text,
+            parse_mode='HTML',
+            message_thread_id=tid
+        )
+        mid = sent.message_id
+    except ApiTelegramException:
+        logger.exception("ApiTelegramException on send_message")
+        return bot.reply_to(
+            m,
+            "❗ Не удалось отправить задачу. Проверьте права бота.",
+            message_thread_id=tid
+        )
+    except Exception:
+        logger.exception("Unexpected error on send_message")
+        return bot.reply_to(
+            m,
+            "❗ Ошибка при отправке задачи. Попробуйте позже.",
+            message_thread_id=tid
+        )
+
+    # 7) Прикрепление кнопки «Взять в работу»
+    try:
+        kb = InlineKeyboardMarkup()
+        kb.add(InlineKeyboardButton("✅ Взять в работу", callback_data=f"accept|{tid}|{mid}"))
         bot.edit_message_reply_markup(cid, mid, reply_markup=kb)
     except ApiTelegramException:
-        pass
+        logger.warning("Не удалось прикрепить клавиатуру", exc_info=True)
+    except Exception:
+        logger.exception("Unexpected error on edit_message_reply_markup")
 
-    # 8) сохраняем в БД
-    db.add_task(cid, tid, mid, author, task_text, 'не выполнено', None)
+    # 8) Сохранение задачи в БД — OperationalError
+    try:
+        db.add_task(cid, tid, mid, author, task_text, 'не выполнено', None)
+    except db.OperationalError:
+        logger.exception("OperationalError on DB insert")
+        bot.send_message(
+            cid,
+            "❗ Проблема с базой данных. Попробуйте позже.",
+            message_thread_id=tid
+        )
+        return
+    # 9) Сохранение задачи в БД — DatabaseError
+    except db.DatabaseError:
+        logger.exception("DatabaseError on DB insert")
+        bot.send_message(
+            cid,
+            "❗ Внутренняя ошибка базы данных.",
+            message_thread_id=tid
+        )
+        return
+    # 10) Прочие ошибки БД
+    except Exception:
+        logger.exception("Unknown error on DB insert")
+        bot.send_message(
+            cid,
+            "❗ Не удалось сохранить задачу. Повторите попытку.",
+            message_thread_id=tid
+        )
+        return
+
+    # 11) Общая «ловушка» на случай любых других непредвиденных исключений
+    # (например, если выше что-то пропустили)
+    try:
+        pass  # здесь уже всё успешно сделано
+    except Exception:
+        logger.exception("Critical unexpected error in /t handler")
+        bot.reply_to(
+            m,
+            "❗ Произошла непредвиденная ошибка при создании задачи. Попробуйте позже.",
+            message_thread_id=tid
+        )
+
 
 # ─── «Принято» ─────────────────────────────────────────────────────────────────
 
