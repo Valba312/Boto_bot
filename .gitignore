@@ -1,3 +1,37 @@
-*.db
-tasks.db-wal
-tasks.db-shm
+# ----------------------------------------
+# Python
+# ----------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# VSCode project settings 
+.vscode/
+
+# SQLite 
+*.db-wal
+*.db-shm
+
+# Логи 
+*.log
+
+# База данных 
+tasks.db
+
+# Секреты и конфигурация
+.env
+
+# Кэш Telebot 
+*.session
+*.json
