@@ -141,7 +141,6 @@ def cmd_newtask(m):
         html_text = (
             f"<b>Задача:</b> {esc_text}\n"
             f"<b>Поставил:</b> {esc_author}\n"
-            f"<b>Статус:</b> ❗ Не выполнено"
         )
         sent = bot.send_message(
             cid,
@@ -278,9 +277,9 @@ def cb_accept(cb):
 
     # 6) Формирование нового текста
     new_html = (
-        f"<s><b>Задача:</b> {text_esc}</s>\n\n"
-        f"<b>Принял:</b> {taker_esc}\n"
-        f"<b>Статус:</b> ✅ Принято"
+        f"✅ <s><b>Задача:</b> {text_esc}</s>\n"
+        f"<b>Поставил:</b> {author_esc}\n"
+        f"<b>Принял:</b> {taker_esc}"
     )
 
     # 7) Редактирование сообщения в чате
@@ -289,8 +288,7 @@ def cb_accept(cb):
             new_html,
             chat_id=cid,
             message_id=mid,
-            parse_mode='HTML',
-            reply_markup=None
+            parse_mode='HTML'
         )
     except ApiTelegramException as e:
         # Игнорируем «message is not modified», логируем все прочие ошибки
@@ -567,7 +565,7 @@ def cb_back_status(cb):
 
 @bot.callback_query_handler(lambda cb: cb.data.startswith('task|'))
 def cb_task(cb):
-    # 1) Парсинг callback_data
+    # 1) Разбор данных callback
     try:
         _, mid_s, status_key, tid_s = cb.data.split('|', 3)
         mid = int(mid_s)
@@ -583,91 +581,44 @@ def cb_task(cb):
                                          "❗ Внутренняя ошибка.",
                                          show_alert=True)
 
-    # 2) Проверка статуса
+    # 2) Чтение текста задачи
     try:
-        human = {'ne': 'не выполнено', 'accepted': 'принято'}[status_key]
-    except KeyError:
-        logger.warning(f"Неизвестный статус: {status_key}")
+        _, text, _, _ = db.get_task_by_id(cid, tid, mid)
+        if text is None:
+            raise LookupError()
+    except Exception:
+        logger.exception("Ошибка БД при чтении задачи")
         return bot.answer_callback_query(cb.id,
-                                         "❗ Неверный статус задачи.",
+                                         "❗ Не удалось получить задачу.",
                                          show_alert=True)
 
-    # 3) Чтение из БД
-    try:
-        result = db.get_task_by_id(cid, tid, mid)
-        if not result:
-            raise LookupError(f"Задача {mid} не найдена")
-        author, text, _, taker = result
-    except LookupError:
-        logger.warning(f"Задача {mid} не найдена в БД")
-        return bot.answer_callback_query(cb.id,
-                                         "❗ Задача не найдена.",
-                                         show_alert=True)
-    except DatabaseError:
-        logger.exception("Ошибка БД при чтении деталей задачи")
-        return bot.send_message(cid,
-                                "❗ Не удалось загрузить детали задачи. Повторите позже.",
-                                message_thread_id=tid)
-    except Exception:
-        logger.exception("Непредвиденная ошибка при чтении задачи")
-        return bot.send_message(cid,
-                                "❗ Внутренняя ошибка при получении задачи.",
-                                message_thread_id=tid)
-
-    # 4) Формируем текст и клавиатуру
-    txt = f"*Задача:* {text}\n" \
-          f"*Поставил:* {author}\n" \
-          f"*Статус:* {human}"
-    if taker:
-        txt += f"\n*Принял:* {taker}"
-    kb = details_kb(status_key, tid)
-
-    # 5) Отправка сообщения с деталями
-    try:
-        bot.send_message(
-            cid,
-            txt,
-            parse_mode='Markdown',
-            reply_to_message_id=mid,
-            reply_markup=kb,
-            message_thread_id=tid
-        )
-    except ApiTelegramException as e:
-        desc = getattr(e, 'result_json', {}).get('description', '')
-        # a) Если оригинал удалён
-        if e.error_code == 400 and 'message to be replied not found' in desc:
-            logger.warning(f"Сообщение {mid} не найдено, отправляем без reply_to")
-            bot.send_message(cid, txt,
-                             parse_mode='Markdown',
-                             reply_markup=kb,
-                             message_thread_id=tid)
-        # b) Ошибка парсинга Markdown
-        elif e.error_code == 400 and "can't parse entities" in desc:
-            logger.exception("Ошибка Markdown-разметки в cb_task")
-            bot.send_message(cid, txt,
-                             parse_mode=None,
-                             reply_markup=kb,
-                             message_thread_id=tid)
-        # c) Rate limit
-        elif e.error_code == 429 and 'retry after' in desc:
-            # вытаскиваем цифры после 'retry after '
-            part = desc.partition('retry after ')[2].split()[0]
-            wait = part if part.isdigit() else None
-            msg = (f"❗ Слишком много запросов. Повторите через {wait} сек."
-                   if wait else "❗ Слишком много запросов. Попробуйте позже.")
-            return bot.answer_callback_query(cb.id, msg, show_alert=True)
-        else:
-            logger.exception("Ошибка API при отправке деталей задачи")
-            bot.reply_to(cb.message, "❗ Не удалось показать детали задачи.")
-    except Exception:
-        logger.exception("Непредвиденная ошибка при send_message в cb_task")
-        bot.reply_to(cb.message, "❗ Ошибка при выводе деталей.")
-    finally:
-        # 6) Закрываем callback
+    # 3) Короткий ответ для «Не выполнено»
+    if status_key == 'ne':
         try:
-            bot.answer_callback_query(cb.id)
+            bot.send_message(
+                cid,
+                f"❌Не выполненная задача: {text}",
+                reply_to_message_id=mid,
+                message_thread_id=tid
+            )
         except Exception:
-            logger.exception("Ошибка при answer_callback_query в cb_task")
+            logger.exception("Ошибка при отправке короткого ответа для «не выполнено»")
+        finally:
+            return bot.answer_callback_query(cb.id)
+
+    # 4) Короткий ответ для «Принято»
+    if status_key == 'accepted':
+        try:
+            bot.send_message(
+                cid,
+                f"✅Выполненная задача: {text}",
+                reply_to_message_id=mid,
+                message_thread_id=tid
+            )
+        except Exception:
+            logger.exception("Ошибка при отправке короткого ответа для «принято»")
+        finally:
+            return bot.answer_callback_query(cb.id)
 
 # ─── «Назад к списку» ──────────────────────────────────────────────────────────
 
@@ -770,14 +721,13 @@ def cb_send_all(cb):
         logger.exception("Ошибка разбора данных cb_send_all")
         return bot.answer_callback_query(cb.id, text="❗ Внутренняя ошибка.", show_alert=True)
 
-    # 2) Переводим ключ в текст
-    human = {'ne':'не выполнено','accepted':'принято'}.get(status_key)
-    if not human:
-        return bot.answer_callback_query(cb.id, text="❗ Неверный статус.", show_alert=True)
 
     # 3) Получаем список задач
     try:
+        human = {'ne': 'не выполнено', 'accepted': 'принято'}[status_key]
         mids = db.get_tasks_by_status(cid, tid, human)
+    except KeyError:
+        return bot.answer_callback_query(cb.id, "❗ Неверный статус.", show_alert=True)
     except DatabaseError:
         logger.exception("DB error in cb_send_all")
         return bot.send_message(cid, "❗ Не удалось загрузить задачи.", message_thread_id=tid)
@@ -786,69 +736,57 @@ def cb_send_all(cb):
         return bot.send_message(cid, "❗ Внутренняя ошибка при загрузке задач.", message_thread_id=tid)
 
     if not mids:
-        return bot.answer_callback_query(cb.id, text="Нет задач для отправки", show_alert=False)
+        return bot.answer_callback_query(cb.id, "Нет задач для отправки", show_alert=False)
 
     # 4) Рассылаем каждую
     sent = 0
     for mid in mids:
         try:
-            author, text, status, taker = db.get_task_by_id(cid, tid, mid)
+            _, text, _, _ = db.get_task_by_id(cid, tid, mid)
         except Exception:
             logger.exception(f"Ошибка чтения задачи {mid}")
             continue
 
-        msg = f"{text}\n\nПоставил: {author}\nСтатус: {status}"
-        if taker:
-            msg += f"\nПринял: {taker}"
+        if status_key == 'ne':
+            msg = f"❌Не выполненная задача: {text}"
+        else:
+            msg = f"✅Выполненная задача: {text}"
 
         try:
             bot.send_message(
                 cid,
                 msg,
                 reply_to_message_id=mid,
-                parse_mode='Markdown',
                 message_thread_id=tid
             )
             sent += 1
         except ApiTelegramException as e:
-            desc = e.result_json.get('description', '').lower()
-
-            # 1) «reply_to not found» — просто пропускаем
-            if 'message to be replied not found' in desc:
-               continue
-
-         # 2) «can't parse entities» — шлём без Markdown
-            if "can't parse entities" in desc:
+            desc = getattr(e, 'result_json', {}).get('description', '').lower()
+            if e.error_code == 400 and 'message to be replied not found' in desc:
                 try:
                     bot.send_message(
                         cid,
                         msg,
-                        reply_to_message_id=mid,
-                        parse_mode=None,
                         message_thread_id=tid
                     )
                     sent += 1
                 except Exception:
-                    logger.exception(f"Не удалось отправить задачу {mid} без Markdown")
-                continue
-            logger.exception(f"ApiTelegramException при отправке задачи {mid}", exc_info=True)
-            continue
+                    logger.exception(f"Не удалось отправить задачу {mid} без reply_to")
+            else:
+                logger.exception(f"ApiTelegramException при отправке задачи {mid}")
         except Exception:
             logger.exception(f"Непредвиденная ошибка при отправке задачи {mid}")
-            continue
 
-    # 5) Обновляем клавиатуру: убираем «Прислать все»
+    # 4) Обновляем меню — убираем «Прислать все»
     try:
         kb = InlineKeyboardMarkup()
         for mid in mids:
-            try:
-                author, text, _, taker = db.get_task_by_id(cid, tid, mid)
-            except Exception:
-                logger.exception(f"Ошибка чтения задачи {mid} при обновлении клавиатуры")
+            row = db.get_task_by_id(cid, tid, mid)
+            if not row:
                 continue
+            _, text, _, _ = row
             label = text if len(text) < 20 else text[:20] + '…'
-            cb_data = f"task|{mid}|{status_key}|{tid}"
-            kb.add(InlineKeyboardButton(label, callback_data=cb_data))
+            kb.add(InlineKeyboardButton(label, callback_data=f"task|{mid}|{status_key}|{tid}"))
         kb.add(InlineKeyboardButton("◀ К статусам", callback_data=f"back_status|{tid}"))
 
         bot.edit_message_reply_markup(
@@ -856,13 +794,10 @@ def cb_send_all(cb):
             message_id=cb.message.message_id,
             reply_markup=kb
         )
-    except ApiTelegramException:
-        # если меню удалено или нет прав — молча пропускаем
-        logger.warning("ApiTelegramException при обновлении клавиатуры send_all", exc_info=True)
     except Exception:
-        logger.exception("Неожиданная ошибка при обновлении клавиатуры send_all")
+        logger.exception("Ошибка при обновлении клавиатуры send_all")
 
-    # 6) Финальное уведомление
+    # 5) Закрываем callback и сообщаем результат
     try:
         bot.answer_callback_query(cb.id, text=f"Отправлено: {sent} задач", show_alert=False)
     except Exception:
