@@ -1,11 +1,12 @@
 from db import repository as db
 from keyboards import list_kb
 import logging
+from utils import throttling_decorator
 
 logger = logging.getLogger(__name__)
 
 def register(bot):
-
+    @throttling_decorator
     @bot.callback_query_handler(lambda cb: cb.data.startswith('status|'))
     def cb_status(cb):
         try:

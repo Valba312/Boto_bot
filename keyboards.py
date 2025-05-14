@@ -15,7 +15,7 @@ def status_kb(thread_id):
     kb.add(InlineKeyboardButton("Принято",        callback_data=f"status|accepted|{thread_id}"))
     return kb
 
-def list_kb(chat_id, message_ids, status_key, thread_id):
+def list_kb(chat_id, message_ids, status_key, thread_id, show_send_all=True):
     """Список задач по статусу"""
     human = {'ne': 'не выполнено', 'accepted': 'принято'}[status_key]
     kb = InlineKeyboardMarkup()
@@ -28,8 +28,8 @@ def list_kb(chat_id, message_ids, status_key, thread_id):
         label = text if len(text) < 20 else text[:20] + '…'
         cb = f"task|{mid}|{status_key}|{thread_id}"
         kb.add(InlineKeyboardButton(label, callback_data=cb))
-
-    kb.add(InlineKeyboardButton("📨 Прислать все", callback_data=f"send_all|{status_key}|{thread_id}"))
+    if show_send_all:
+        kb.add(InlineKeyboardButton("📨 Прислать все", callback_data=f"send_all|{status_key}|{thread_id}"))
     kb.add(InlineKeyboardButton("◀ К статусам", callback_data=f"back_status|{thread_id}"))
     return kb
 

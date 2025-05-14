@@ -1,11 +1,12 @@
 from db import repository as db
 from utils import get_author, escape_html
 import logging
+from utils import throttling_decorator
 
 logger = logging.getLogger(__name__)
 
 def register(bot):
-
+    @throttling_decorator
     @bot.callback_query_handler(lambda cb: cb.data.startswith('accept|'))
     def cb_accept(cb):
         try:

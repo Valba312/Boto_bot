@@ -1,10 +1,11 @@
 import logging
 from keyboards import status_kb
+from utils import throttling_decorator
 
 logger = logging.getLogger(__name__)
 
 def register(bot):
-
+    @throttling_decorator
     @bot.message_handler(commands=['filter'])
     def cmd_filter(m):
         cid = m.chat.id

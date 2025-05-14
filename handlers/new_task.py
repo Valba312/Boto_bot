@@ -2,12 +2,12 @@ import logging
 from telebot.apihelper import ApiTelegramException
 from db import repository as db
 from keyboards import action_kb
-from utils import escape_html, get_author
+from utils import escape_html, get_author, throttling_decorator
 
 logger = logging.getLogger(__name__)
 
 def register(bot):
-
+    @throttling_decorator
     @bot.message_handler(commands=['t'])
     def cmd_newtask(m):
         cid = m.chat.id

@@ -1,11 +1,12 @@
 import logging
 from telebot.types import CallbackQuery
 from db import repository as db
+from utils import throttling_decorator
 
 logger = logging.getLogger(__name__)
 
 def register(bot):
-
+    @throttling_decorator
     @bot.callback_query_handler(lambda cb: cb.data.startswith('task|'))
     def cb_task(cb: CallbackQuery):
         try:
