@@ -14,7 +14,6 @@ import handlers.callback_status
 import handlers.callback_task
 import handlers.callback_navigation
 
-
 def setup_logging():
     """Настройка логирования в файл с ротацией + в консоль"""
     os.makedirs("logs", exist_ok=True)
@@ -26,8 +25,11 @@ def setup_logging():
         encoding="utf-8"
     )
 
+    # Преобразуем LOG_LEVEL к int, если оно строка
+    level = getattr(logging, LOG_LEVEL, logging.INFO) if isinstance(LOG_LEVEL, str) else LOG_LEVEL
+
     logging.basicConfig(
-        level=LOG_LEVEL,
+        level=level,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         handlers=[
@@ -36,6 +38,9 @@ def setup_logging():
         ]
     )
 
+    # Отключаем лишний DEBUG от сторонних библиотек
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("telebot").setLevel(logging.INFO)
 
 def main():
     setup_logging()
@@ -59,7 +64,6 @@ def main():
     # Запуск polling
     bot.remove_webhook()
     bot.infinity_polling()
-
 
 if __name__ == '__main__':
     main()
