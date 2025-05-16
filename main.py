@@ -2,6 +2,8 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from telebot import TeleBot
+import threading
+import time
 
 from config import TOKEN, LOG_LEVEL
 from db.repository import create_tables
@@ -13,6 +15,15 @@ import handlers.callback_accept
 import handlers.callback_status
 import handlers.callback_task
 import handlers.callback_navigation
+
+def ping_watchdog():
+    while True:
+        with open('bot.ping', 'w') as f:
+            f.write(str(int(time.time())))
+        time.sleep(60)
+
+# Запуск пинг-ватчдога (фоновый поток)
+threading.Thread(target=ping_watchdog, daemon=True).start()
 
 def setup_logging():
     """Настройка логирования в файл с ротацией + в консоль"""
@@ -46,6 +57,10 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("🚀 Запуск Telegram-бота")
+
+    # Сохраняем PID процесса
+    with open('bot.pid', 'w') as f:
+        f.write(str(os.getpid()))
 
     # Создание экземпляра бота
     bot = TeleBot(TOKEN, parse_mode='HTML')
