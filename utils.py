@@ -13,6 +13,14 @@ def get_author(user) -> str:
         return "<unknown>"
     return f"@{user.username}" if user.username else user.first_name or str(user.id)
 
+def parse_callback(data: str) -> tuple:
+    """
+    Распаковывает данные callback типа 'task|1234|ne|None' → tuple
+    Возвращает (prefix, mid, status, optional)
+    """
+    parts = data.split('|', 3)
+    return parts if len(parts) == 4 else (None, None, None, None)
+
 def throttling_decorator(func):
     def wrapper(*args, **kwargs):
         try:
@@ -29,7 +37,6 @@ def throttling_decorator(func):
                     desc2 = getattr(e2, 'result_json', {}).get('description', '')
                     if e2.error_code == 429 or 'Too Many Requests' in desc2 or 'retry after' in desc2:
                         message = None
-                        # пробуем достать message или cb (для колбэка)
                         for arg in args:
                             if hasattr(arg, 'chat') and hasattr(arg, 'message_id'):
                                 message = arg

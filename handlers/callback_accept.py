@@ -20,7 +20,10 @@ def register(bot):
         taker = get_author(cb.from_user)
 
         try:
-            author, text, _, _ = db.get_task_by_id(cid, tid, mid)
+            row = db.get_task_by_id(cid, tid, mid)
+            if not row:
+                return bot.answer_callback_query(cb.id, "❗ Задача не найдена", show_alert=True)
+            author, text, _, _ = row
         except Exception:
             logger.exception("Ошибка чтения задачи")
             return bot.answer_callback_query(cb.id, "❗ Не удалось получить задачу", show_alert=True)
