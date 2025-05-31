@@ -8,25 +8,10 @@ def escape_html(text: str) -> str:
     return html.escape(text)
 
 def get_author(user) -> str:
-    """Безопасно формирует имя автора задачи из объекта user"""
-    try:
-        if not user:
-            return "<unknown>"
-        username = getattr(user, "username", None)
-        if username:
-            return f"@{username}"
-        first = getattr(user, "first_name", "")
-        last = getattr(user, "last_name", "")
-        full_name = f"{first} {last}".strip()
-        if full_name:
-            return full_name
-        uid = getattr(user, "id", None)
-        if uid:
-            return f"Пользователь ({uid})"
+    """Формирует имя автора задачи из объекта user"""
+    if not user:
         return "<unknown>"
-    except Exception as e:
-        print(f"[get_author] Ошибка: {e}, user={user}")
-        return "<unknown>"
+    return f"@{user.username}" if user.username else user.first_name or str(user.id)
 
 def throttling_decorator(func):
     def wrapper(*args, **kwargs):
