@@ -43,4 +43,3 @@ def throttling_decorator(func):
                     raise
             raise
     return wrapper
-

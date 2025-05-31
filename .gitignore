@@ -6,6 +6,9 @@ __pycache__/
 *.pyo
 *.pyd
 *.so
+*.pid
+*.ping
+
 
 # Byte-compiled / optimized / DLL files
 *.pyc

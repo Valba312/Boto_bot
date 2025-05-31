@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def register(bot):
     @throttling_decorator
-    @bot.message_handler(commands=['filter'])
+    @bot.message_handler(commands=['f', 'filter'])
     def cmd_filter(m):
         cid = m.chat.id
         tid = m.message_thread_id
