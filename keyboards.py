@@ -12,14 +12,14 @@ def status_kb(thread_id):
     """Меню выбора статуса (status|ne|<thread_id>)"""
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton("Не выполнено",  callback_data=f"status|ne|{thread_id}"))
-    kb.add(InlineKeyboardButton("Принято",        callback_data=f"status|accepted|{thread_id}"))
     return kb
 
-def list_kb(chat_id, message_ids, status_key, thread_id, show_send_all=True):
-    """Список задач по статусу"""
-    human = {'ne': 'не выполнено', 'accepted': 'принято'}[status_key]
+def list_kb(chat_id, message_ids, status_key, thread_id):
+    """
+    Список задач по статусу.  
+    Только кнопки задач!
+    """
     kb = InlineKeyboardMarkup()
-
     for mid in message_ids:
         try:
             author, text, _, _ = db.get_task_by_id(chat_id, thread_id, mid)
@@ -28,10 +28,8 @@ def list_kb(chat_id, message_ids, status_key, thread_id, show_send_all=True):
         label = text if len(text) < 20 else text[:20] + '…'
         cb = f"task|{mid}|{status_key}|{thread_id}"
         kb.add(InlineKeyboardButton(label, callback_data=cb))
-    if show_send_all:
-        kb.add(InlineKeyboardButton("📨 Прислать все", callback_data=f"send_all|{status_key}|{thread_id}"))
-    kb.add(InlineKeyboardButton("◀ К статусам", callback_data=f"back_status|{thread_id}"))
     return kb
+
 
 def details_kb(status_key, thread_id):
     """Кнопка «Назад к списку задач»"""
