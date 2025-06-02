@@ -8,18 +8,25 @@ def escape_html(text: str) -> str:
     return html.escape(text)
 
 def get_author(user) -> str:
-    """Формирует имя автора задачи из объекта user"""
-    if not user:
+    """Безопасно формирует имя автора задачи из объекта user"""
+    try:
+        if not user:
+            return "<unknown>"
+        username = getattr(user, "username", None)
+        if username:
+            return f"@{username}"
+        first = getattr(user, "first_name", "")
+        last = getattr(user, "last_name", "")
+        full_name = f"{first} {last}".strip()
+        if full_name:
+            return full_name
+        uid = getattr(user, "id", None)
+        if uid:
+            return f"Пользователь ({uid})"
         return "<unknown>"
-    return f"@{user.username}" if user.username else user.first_name or str(user.id)
-
-def parse_callback(data: str) -> tuple:
-    """
-    Распаковывает данные callback типа 'task|1234|ne|None' → tuple
-    Возвращает (prefix, mid, status, optional)
-    """
-    parts = data.split('|', 3)
-    return parts if len(parts) == 4 else (None, None, None, None)
+    except Exception as e:
+        print(f"[get_author] Ошибка: {e}, user={user}")
+        return "<unknown>"
 
 def throttling_decorator(func):
     def wrapper(*args, **kwargs):
@@ -37,6 +44,7 @@ def throttling_decorator(func):
                     desc2 = getattr(e2, 'result_json', {}).get('description', '')
                     if e2.error_code == 429 or 'Too Many Requests' in desc2 or 'retry after' in desc2:
                         message = None
+                        # пробуем достать message или cb (для колбэка)
                         for arg in args:
                             if hasattr(arg, 'chat') and hasattr(arg, 'message_id'):
                                 message = arg
