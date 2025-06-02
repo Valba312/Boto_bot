@@ -8,6 +8,8 @@ __pycache__/
 *.so
 *.pid
 *.ping
+bot.pid
+bot.ping
 
 
 # Byte-compiled / optimized / DLL files
@@ -38,3 +40,7 @@ tasks.db
 # Кэш Telebot 
 *.session
 *.json
+*.pid
+*.ping
+bot.pid
+bot.ping
