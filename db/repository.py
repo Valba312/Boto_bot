@@ -199,6 +199,33 @@ def add_user(telegram_id, phone, name, role):
     return True
 
 @_with_retry
+def get_user(telegram_id):
+    """Возвращает кортеж (phone, name, role) для пользователя."""
+    db = get_db()
+    cur = db.cursor()
+    cur.execute(
+        'SELECT phone, name, role FROM users WHERE telegram_id = ?',
+        (telegram_id,)
+    )
+    return cur.fetchone()
+
+@_with_retry
+def update_user_phone(telegram_id, phone):
+    """Обновляет номер телефона пользователя."""
+    db = get_db()
+    db.execute('UPDATE users SET phone = ? WHERE telegram_id = ?', (phone, telegram_id))
+    db.commit()
+    return True
+
+@_with_retry
+def update_user_role(telegram_id, role):
+    """Меняет роль пользователя."""
+    db = get_db()
+    db.execute('UPDATE users SET role = ? WHERE telegram_id = ?', (role, telegram_id))
+    db.commit()
+    return True
+
+@_with_retry
 def get_user_role(telegram_id):
     db = get_db()
     cur = db.cursor()
