@@ -5,6 +5,7 @@ from telebot.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
 from config import ADMIN_IDS
 from db import repository as db
+import re
 
 _NEW_APP_DATA = {}
 
@@ -13,6 +14,21 @@ def _main_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add("Новая заявка", "Мои заявки")
     return kb
+
+def _help_text(role: str) -> str:
+    base = (
+        "Доступные команды:\n"
+        "Новая заявка — создать заявку (/newapp)\n"
+        "Мои заявки — список заявок (/myapps)"
+    )
+    if role == 'admin':
+        base += (
+            "\nАдминистраторские команды:\n"
+            "/allapps — все заявки\n"
+            "/setstatus <id> <статус> — изменить статус\n"
+            "/setrole <id> <роль> — назначить роль"
+        )
+    return base
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +41,20 @@ def register(bot):
         """Регистрация пользователя и запрос номера телефона."""
         user_id = m.from_user.id
         name = m.from_user.full_name
-        role = 'admin' if user_id in ADMIN_IDS else 'agent'
-        db.add_user(user_id, None, name, role)
-
-        info = db.get_user(user_id)
-        phone = info[0] if info else None
+        stored = db.get_user(user_id)
+        if stored:
+            role = stored[2]
+        else:
+            role = 'admin' if (user_id in ADMIN_IDS or not db.any_admins()) else 'agent'
+            db.add_user(user_id, None, name, role)
+        phone = stored[0] if stored else None
         if not phone:
             kb = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
             kb.add(KeyboardButton('📱 Отправить телефон', request_contact=True))
             bot.reply_to(m, 'Пожалуйста, поделитесь номером телефона', reply_markup=kb)
         else:
-            bot.reply_to(m, f'Вы зарегистрированы как {role}', reply_markup=_main_menu())
+            text = f'Вы зарегистрированы как {role}\n' + _help_text(role)
+            bot.reply_to(m, text, reply_markup=_main_menu())
 
     @bot.message_handler(content_types=['contact'])
     def contact_handler(m: Message):
@@ -43,7 +62,9 @@ def register(bot):
         if not m.contact or m.contact.user_id != m.from_user.id:
             return
         db.update_user_phone(m.from_user.id, m.contact.phone_number)
-        bot.reply_to(m, 'Телефон сохранён', reply_markup=_main_menu())
+        role = db.get_user_role(m.from_user.id)
+        text = 'Телефон сохранён\n' + _help_text(role)
+        bot.reply_to(m, text, reply_markup=_main_menu())
 
     @bot.message_handler(commands=['newapp'])
     @bot.message_handler(func=lambda m: m.text == 'Новая заявка')
@@ -54,36 +75,61 @@ def register(bot):
         bot.register_next_step_handler(msg, _step_phone)
 
     def _step_phone(message: Message):
+        full_name = (message.text or '').strip()
+        if not full_name or full_name.startswith('/'):
+            msg = bot.reply_to(message, 'Неверный формат. ФИО клиента?')
+            bot.register_next_step_handler(msg, _step_phone)
+            return
         data = _NEW_APP_DATA.get(message.from_user.id, {})
-        data['full_name'] = message.text
+        data['full_name'] = full_name
         msg = bot.send_message(message.chat.id, 'Телефон клиента?')
         _NEW_APP_DATA[message.from_user.id] = data
         bot.register_next_step_handler(msg, _step_city)
 
     def _step_city(message: Message):
+        phone = (message.text or '').strip()
+        if not re.fullmatch(r'\+?\d{5,15}', phone):
+            msg = bot.reply_to(message, 'Неверный формат. Телефон клиента?')
+            bot.register_next_step_handler(msg, _step_city)
+            return
         data = _NEW_APP_DATA.get(message.from_user.id, {})
-        data['phone'] = message.text
+        data['phone'] = phone
         msg = bot.send_message(message.chat.id, 'Город клиента?')
         _NEW_APP_DATA[message.from_user.id] = data
         bot.register_next_step_handler(msg, _step_interest)
 
     def _step_interest(message: Message):
+        city = (message.text or '').strip()
+        if not city:
+            msg = bot.reply_to(message, 'Неверный формат. Город клиента?')
+            bot.register_next_step_handler(msg, _step_interest)
+            return
         data = _NEW_APP_DATA.get(message.from_user.id, {})
-        data['city'] = message.text
+        data['city'] = city
         msg = bot.send_message(message.chat.id, 'Интерес клиента?')
         _NEW_APP_DATA[message.from_user.id] = data
         bot.register_next_step_handler(msg, _step_comment)
 
     def _step_comment(message: Message):
-        data = _NEW_APP_DATA.pop(message.from_user.id, {})
-        data['interest'] = message.text
+        interest = (message.text or '').strip()
+        if not interest:
+            msg = bot.reply_to(message, 'Неверный формат. Интерес клиента?')
+            bot.register_next_step_handler(msg, _step_comment)
+            return
+        data = _NEW_APP_DATA.get(message.from_user.id, {})
+        data['interest'] = interest
         msg = bot.send_message(message.chat.id, 'Комментарий?')
-        bot.register_next_step_handler(msg, _finish_newapp, data)
+        _NEW_APP_DATA[message.from_user.id] = data
+        bot.register_next_step_handler(msg, _finish_newapp)
 
-    def _finish_newapp(message: Message, data=None):
-        if data is None:
-            data = _NEW_APP_DATA.pop(message.from_user.id, {})
-        comment = message.text
+    def _finish_newapp(message: Message):
+        data = _NEW_APP_DATA.pop(message.from_user.id, {})
+        comment = (message.text or '').strip()
+        if not comment:
+            msg = bot.reply_to(message, 'Неверный формат. Комментарий?')
+            _NEW_APP_DATA[message.from_user.id] = data
+            bot.register_next_step_handler(msg, _finish_newapp)
+            return
         full_name = data.get('full_name')
         phone = data.get('phone')
         city = data.get('city')

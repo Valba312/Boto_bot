@@ -226,6 +226,14 @@ def update_user_role(telegram_id, role):
     return True
 
 @_with_retry
+def any_admins():
+    """Return True if there is at least one user with role 'admin'."""
+    db_conn = get_db()
+    cur = db_conn.cursor()
+    cur.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1")
+    return cur.fetchone() is not None
+
+@_with_retry
 def get_user_role(telegram_id):
     db = get_db()
     cur = db.cursor()
