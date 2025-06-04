@@ -182,6 +182,7 @@ def delete_task(chat_id, thread_id, message_id):
     ''', (chat_id, thread_id, message_id))
     db_conn.commit()
     return True
+ mmc10t-codex/разработать-telegram-бота-для-агентской-системы-rosfinex
 
 # ---------------------------
 # Функции для пользователей
@@ -246,3 +247,4 @@ def update_application_status(app_id, status):
     db.execute('UPDATE applications SET status = ? WHERE id = ?', (status, app_id))
     db.commit()
     return True
+ main

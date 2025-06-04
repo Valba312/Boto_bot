@@ -31,3 +31,4 @@ def register(bot):
         except Exception:
             logger.exception("Ошибка при выводе невыполненных задач")
             bot.reply_to(m, "❗ Не удалось получить задачи.", message_thread_id=tid)
+
