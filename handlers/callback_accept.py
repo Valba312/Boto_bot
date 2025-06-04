@@ -7,9 +7,12 @@ from utils import get_author, escape_html, throttling_decorator
 logger = logging.getLogger(__name__)
 
 def register(bot):
+    """Регистрирует колбэк для принятия задачи исполнителем"""
+
     @throttling_decorator
     @bot.callback_query_handler(lambda cb: cb.data.startswith('accept|'))
     def cb_accept(cb: CallbackQuery):
+        """Обрабатывает нажатие кнопки «Взять в работу»"""
         try:
             # Разбор callback_data: accept|<thread_id>|<message_id>
             _, tid_s, mid_s = cb.data.split('|', 2)
@@ -69,3 +72,4 @@ def register(bot):
             bot.answer_callback_query(cb.id, "✅ Задача принята")
         except Exception:
             logger.exception("callback_accept: ошибка в answer_callback_query")
+

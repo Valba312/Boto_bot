@@ -7,13 +7,17 @@ from utils import escape_html, get_author, throttling_decorator
 logger = logging.getLogger(__name__)
 
 def register(bot):
+    """Регистрация команды добавления новой задачи"""
+
     @throttling_decorator
     @bot.message_handler(commands=['t'])
     def cmd_newtask(m):
+        """Создаёт новую задачу из текста после команды /t"""
         cid = m.chat.id
         tid = m.message_thread_id
 
-        parts = m.text.split(maxsplit=1)
+        text = m.text or ''  # если message.text нет, используем пустую строку
+        parts = text.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             return bot.reply_to(
                 m,
@@ -60,3 +64,5 @@ def register(bot):
         except Exception:
             logger.exception("Ошибка при сохранении задачи в БД")
             bot.send_message(cid, "❗ Не удалось сохранить задачу.", message_thread_id=tid)
+
+
