@@ -2,10 +2,16 @@ import html
 import time
 import logging
 from telebot.apihelper import ApiTelegramException
+from config import ADMIN_IDS
 
 def escape_html(text: str) -> str:
     """Безопасный HTML-escape для текста"""
     return html.escape(text)
+
+
+def is_admin(user_id: int) -> bool:
+    """Проверяет, есть ли идентификатор пользователя в списке ADMIN_IDS."""
+    return user_id in ADMIN_IDS
 
 def get_author(user) -> str:
     """Безопасно формирует имя автора задачи из объекта user"""
@@ -58,3 +64,4 @@ def throttling_decorator(func):
                     raise
             raise
     return wrapper
+

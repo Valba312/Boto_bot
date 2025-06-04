@@ -13,6 +13,7 @@ import handlers.new_task
 import handlers.filter
 import handlers.callback_accept
 import handlers.callback_task
+import handlers.admin
 
 def ping_watchdog():
     while True:
@@ -71,6 +72,7 @@ def main():
     handlers.filter.register(bot)
     handlers.callback_accept.register(bot)
     handlers.callback_task.register(bot)
+    handlers.admin.register(bot)
 
     # Запуск polling
     bot.remove_webhook()
