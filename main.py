@@ -13,11 +13,9 @@ import handlers.new_task
 import handlers.filter
 import handlers.callback_accept
 import handlers.callback_task
- mmc10t-codex/разработать-telegram-бота-для-агентской-системы-rosfinex
 import handlers.rosfinex
 
 import handlers.admin
- main
 
 def ping_watchdog():
     while True:
@@ -76,11 +74,9 @@ def main():
     handlers.filter.register(bot)
     handlers.callback_accept.register(bot)
     handlers.callback_task.register(bot)
- mmc10t-codex/разработать-telegram-бота-для-агентской-системы-rosfinex
     handlers.rosfinex.register(bot)
 
     handlers.admin.register(bot)
- main
 
     # Запуск polling
     bot.remove_webhook()
