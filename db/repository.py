@@ -63,6 +63,35 @@ def create_tables():
             accepted_by  TEXT
         )
     ''')
+
+    # Таблица пользователей бота
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            telegram_id INTEGER PRIMARY KEY,
+            phone       TEXT,
+            name        TEXT,
+            role        TEXT NOT NULL
+        )
+    ''')
+
+    # Таблица заявок клиентов
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS applications (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id     INTEGER NOT NULL,
+            full_name   TEXT NOT NULL,
+            phone       TEXT NOT NULL,
+            city        TEXT,
+            interest    TEXT,
+            comment     TEXT,
+            status      TEXT NOT NULL,
+            assigned_to INTEGER,
+            commission  REAL DEFAULT 0,
+            paid        INTEGER DEFAULT 0,
+            FOREIGN KEY(user_id) REFERENCES users(telegram_id)
+        )
+    ''')
+
     db.commit()
     return True
 
@@ -152,4 +181,68 @@ def delete_task(chat_id, thread_id, message_id):
          WHERE chat_id = ? AND thread_id IS ? AND message_id = ?
     ''', (chat_id, thread_id, message_id))
     db_conn.commit()
+    return True
+
+# ---------------------------
+# Функции для пользователей
+# ---------------------------
+
+@_with_retry
+def add_user(telegram_id, phone, name, role):
+    db = get_db()
+    db.execute(
+        '''INSERT OR REPLACE INTO users (telegram_id, phone, name, role)
+           VALUES (?, ?, ?, ?)''',
+        (telegram_id, phone, name, role)
+    )
+    db.commit()
+    return True
+
+@_with_retry
+def get_user_role(telegram_id):
+    db = get_db()
+    cur = db.cursor()
+    cur.execute('SELECT role FROM users WHERE telegram_id = ?', (telegram_id,))
+    row = cur.fetchone()
+    return row[0] if row else None
+
+# ---------------------------
+# Функции для заявок
+# ---------------------------
+
+@_with_retry
+def add_application(user_id, full_name, phone, city, interest, comment, status='new'):
+    db = get_db()
+    cur = db.cursor()
+    cur.execute(
+        '''INSERT INTO applications
+           (user_id, full_name, phone, city, interest, comment, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)''',
+        (user_id, full_name, phone, city, interest, comment, status)
+    )
+    db.commit()
+    return cur.lastrowid
+
+@_with_retry
+def get_user_applications(user_id):
+    db = get_db()
+    cur = db.cursor()
+    cur.execute(
+        '''SELECT id, full_name, status FROM applications WHERE user_id = ?''',
+        (user_id,)
+    )
+    return cur.fetchall()
+
+@_with_retry
+def get_all_applications():
+    db = get_db()
+    cur = db.cursor()
+    cur.execute('SELECT id, full_name, status FROM applications')
+    return cur.fetchall()
+
+@_with_retry
+def update_application_status(app_id, status):
+    db = get_db()
+    db.execute('UPDATE applications SET status = ? WHERE id = ?', (status, app_id))
+    db.commit()
     return True
